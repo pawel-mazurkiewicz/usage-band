@@ -1,0 +1,26 @@
+{
+  "name": "usage-band",
+  "version": "1.0.0",
+  "description": "A cute at-a-glance card above the prompt: context, 5h and weekly limits, context mix, cache, branch, and Claudie the pixel pet",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "cacheTtlMinutes": {
+      "type": "number",
+      "title": "Prompt cache TTL (minutes)",
+      "description": "How long the prompt cache stays warm after a turn: 60 on subscriptions, 5 on API keys.",
+      "default": 60
+    }
+  },
+  "author": {
+    "name": "pawel-mazurkiewicz"
+  },
+  "homepage": "https://github.com/pawel-mazurkiewicz/usage-band",
+  "repository": "https://github.com/pawel-mazurkiewicz/usage-band",
+  "keywords": [
+    "statusline",
+    "usage",
+    "context",
+    "rate-limits",
+    "pet"
+  ]
+}

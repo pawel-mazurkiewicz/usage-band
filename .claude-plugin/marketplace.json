@@ -1,0 +1,14 @@
+{
+  "name": "usage-band",
+  "description": "usage-band: an at-a-glance usage card above the Claude Code prompt",
+  "owner": {
+    "name": "pawel-mazurkiewicz"
+  },
+  "plugins": [
+    {
+      "name": "usage-band",
+      "source": "./",
+      "description": "A cute at-a-glance card above the prompt: context, 5h and weekly limits, context mix, cache, branch, and Claudie the pixel pet"
+    }
+  ]
+}
