@@ -16,6 +16,7 @@
   },
   "homepage": "https://github.com/pawel-mazurkiewicz/usage-band",
   "repository": "https://github.com/pawel-mazurkiewicz/usage-band",
+  "license": "MIT",
   "keywords": [
     "statusline",
     "usage",

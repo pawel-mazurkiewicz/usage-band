@@ -90,3 +90,7 @@ claude --plugin-dir .
 ## Credits
 
 The pixel pet drawn as SVG frames, and the clickable pet, were inspired by [ctxline-claude](https://github.com/MithunWijayasiri/ctxline-claude).
+
+## License
+
+[MIT](LICENSE)
