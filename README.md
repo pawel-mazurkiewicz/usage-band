@@ -11,15 +11,17 @@ A small card above the Claude Code prompt that tells you, at a glance, how much 
 At the prompt of a Claude Code terminal session:
 
 ```
-/plugin install usage-band --marketplace pawel-mazurkiewicz/usage-band
+/plugin marketplace add pawel-mazurkiewicz/usage-band
+/plugin install usage-band@usage-band
 ```
 
-Answer `y` to add the marketplace, then press Enter to install at the user scope, so the band shows in every session.
+Choose the user scope so the band shows in every session.
 
 From a shell:
 
 ```bash
-claude plugin install usage-band --marketplace pawel-mazurkiewicz/usage-band
+claude plugin marketplace add pawel-mazurkiewicz/usage-band
+claude plugin install usage-band@usage-band
 ```
 
 In the Claude desktop app, where `/plugin` doesn't run: click **+** next to the prompt box, choose **Plugins**, then **Add marketplace** with `pawel-mazurkiewicz/usage-band`, then **Add plugin**. A plugin installed from a terminal at the user scope also loads in the desktop app's Code tab.
