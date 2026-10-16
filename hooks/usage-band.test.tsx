@@ -36,7 +36,7 @@ const BREAKDOWN = {
 }
 
 // Stands in for the engine beneath the plugin.
-const engine = (on: On) => {
+const engine = (on: On, place = { cwd: '/Users/someone/code/my-app', branch: 'main' }) => {
   const calls = { compact: 0 }
   on('session.usage', ($, e) => ({
     value: {
@@ -45,9 +45,9 @@ const engine = (on: On) => {
       rateLimits: [],
     } as never,
   }))
-  on('session.cwd', () => ({ value: '/Users/someone/code/my-app' }))
+  on('session.cwd', () => ({ value: place.cwd }))
   on('process.run', () => ({
-    value: { exitCode: 0, stdout: '## main...origin/main [ahead 1]\n M a.ts\n?? b.ts\n', stderr: '' } as never,
+    value: { exitCode: 0, stdout: `## ${place.branch}...origin/${place.branch} [ahead 1]\n M a.ts\n?? b.ts\n`, stderr: '' } as never,
   }))
   on('session.start', () => ({ cwd: '/' }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
@@ -74,9 +74,9 @@ const measure = (withLimits: boolean) =>
     changed: ['context', 'rateLimits'],
   }) as never
 
-const boot = async ($: Engine, on: On, withLimits = true) => {
+const boot = async ($: Engine, on: On, withLimits = true, place?: { cwd: string; branch: string }) => {
   const clock = mock.clock(on, { now: NOW })
-  const calls = engine(on)
+  const calls = engine(on, place)
   await $.session.start({ source: 'startup', cwd: '/' } as never)
   await $.session.measure(measure(withLimits))
   await clock.settle()
@@ -222,4 +222,46 @@ test('without a subscription only the context meter shows', async ($, on) => {
   expect(alts).toContain('Context 42%')
   expect(alts).not.toContain('Week')
   await desk.unmount()
+})
+
+const LONG = {
+  cwd: '/Users/someone/code/budget-stat-costing-design-e92cd0',
+  branch: 'claude/budget-stat-costing-design-e92cd0',
+}
+
+test('desktop pictures never shrink, so text keeps its size at any width', async ($, on) => {
+  await boot($, on, true, LONG)
+  for (const columns of [150, 110, 80, 60]) {
+    const ui = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(columns) })
+    const boxes = await ui.findAll({ type: 'Box' })
+    expect(boxes.filter(b => b.props.flexShrink === 1 || b.props.minWidth === 0)).toHaveLength(0)
+    for (const svg of await ui.findAll({ type: 'Svg' })) {
+      const own = /^<svg[^>]*?\swidth="(\d+)"/.exec(String(svg.props.source))?.[1]
+      if (own !== undefined) expect(svg.props.width).toBe(Number(own))
+    }
+    await ui.unmount()
+  }
+})
+
+test('long names are shortened in the middle before the status moves below them', async ($, on) => {
+  const { clock } = await boot($, on, true, LONG)
+  await $.turn.start({ text: 'hi', turnId: 't1' } as never)
+  await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 129_000, isAborted: false, turnId: 't1' } as never)
+  await clock.settle()
+
+  const wide = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(200) })
+  expect((await pictures(wide)).sources).toContain('claude/budget-stat-costing-design-e92cd0')
+  expect(await wide.find({ key: 'status' })).toBeUndefined()
+  await wide.unmount()
+
+  const medium = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(120) })
+  const mediumSources = (await pictures(medium)).sources
+  expect(mediumSources).toContain('…')
+  expect(await medium.find({ key: 'status' })).toBeUndefined()
+  await medium.unmount()
+
+  const narrow = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(70) })
+  expect(await narrow.find({ key: 'status' })).toBeDefined()
+  expect((await pictures(narrow)).alts).toContain('last turn')
+  await narrow.unmount()
 })

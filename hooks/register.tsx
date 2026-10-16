@@ -12,7 +12,7 @@ import type { Activity, Breakdown, Meter, Place, Pulse, Snapshot } from '../type
 import { PET_HEIGHT, PET_WIDTH, SPRITE_WIDTH, TICK_MS, caption, moodOf, petSvg, terminalSprite } from './claudie'
 import type { Mood } from './claudie'
 import { CH, INK, cells, lines, meter, runsWidth, stack } from './desktop'
-import type { Run } from './desktop'
+import type { Picture, Run } from './desktop'
 
 const snapshot = atom({ plugin: 'usage-band', key: 'snapshot' } as const, null)
 const pulse = atom({ plugin: 'usage-band', key: 'pulse' } as const, { now: 0, frame: 0 } satisfies Pulse)
@@ -303,30 +303,72 @@ const compact = async ($: EngineInterface) => {
 const LABEL_CELLS = 9
 // The desktop's cells as the band measures them, a little under the SVG's advance so nothing spills.
 const CELL_PX = 7.2
+// What the compact button takes in the app's own font, padding included.
+const COMPACT_PX = 100
+
+// Two names in `room` cells: whole when they fit; otherwise half each, a short one's spare half
+// going to the other, and neither under eight.
+const share = (a: string, b: string, room: number): [string, string] => {
+  const [wa, wb] = [cells(a), cells(b)]
+  if (wa + wb <= room) return [a, b]
+  const half = Math.floor(room / 2)
+  if (wa <= half) return [a, fit(b, Math.max(8, room - wa))]
+  if (wb <= half) return [fit(a, Math.max(8, room - wb)), b]
+
+  return [fit(a, Math.max(8, half)), fit(b, Math.max(8, room - half))]
+}
+
+// A name cut to `n` cells, its middle given up for an ellipsis so both ends still read.
+const fit = (s: string, n: number) => {
+  const chars = [...s]
+  if (chars.length <= n) return s
+  if (n <= 1) return '…'
+  const head = Math.ceil((n - 1) / 2)
+
+  return `${chars.slice(0, head).join('')}…${chars.slice(chars.length - (n - 1 - head)).join('')}`
+}
 
 function drawDesktop($: EngineInterface, ui: Elements['desktop'], m: Model, columns: number): RenderElement {
   const { Box, Button, Svg } = ui
   const pet = petSvg(m.mood, m.frame, m.sinceBoop)
   const said = caption(m.mood, m.frame)
+  // Every picture in a box that never shrinks: a squeezed image scales its text down with it.
+  const pic = (key: string, p: Picture, alt: string) => (
+    <Box key={key} flexShrink={0}>
+      <Svg source={p.source} alt={alt} width={p.width} height={p.height} />
+    </Box>
+  )
 
-  // Header, left: where the session is, and what Claudie says.
-  const where: Run[] = m.where
-    ? [
+  const availPx = columns * CELL_PX
+
+  // Header, left: where the session is, and what Claudie says, in at most `budget` cells.
+  const infoLines = (budget: number): Run[][] => {
+    const w = m.where
+    const quote = [{ text: fit(`“${said}”`, budget), color: INK.say, italic: true }] satisfies Run[]
+    if (!w) return [[{ text: '…', color: INK.dim }], quote]
+    const marks = `${w.ahead ? ` ↑${w.ahead}` : ''}${w.behind ? ` ↓${w.behind}` : ''}${w.dirty ? ` ±${w.dirty}` : ''}`
+    // An icon takes two cells; the folder and the branch share the rest.
+    const room = budget - 2 - (w.branch ? 4 + cells(marks) : 0)
+    const [folder, branch] = w.branch ? share(w.folder, w.branch, room) : [fit(w.folder, Math.max(8, room)), '']
+
+    return [
+      [
         { icon: 'folder', color: INK.folder },
-        { text: m.where.folder, color: INK.folder, bold: true },
-        ...(m.where.branch
+        { text: folder, color: INK.folder, bold: true },
+        ...(w.branch
           ? ([
               { text: '  ', color: INK.dim },
               { icon: 'branch', color: INK.branch },
-              { text: m.where.branch, color: INK.branch },
-              ...(m.where.ahead ? [{ text: ` ↑${m.where.ahead}`, color: INK.sync }] : []),
-              ...(m.where.behind ? [{ text: ` ↓${m.where.behind}`, color: INK.sync }] : []),
-              ...(m.where.dirty ? [{ text: ` ±${m.where.dirty}`, color: INK.dirty }] : []),
+              { text: branch, color: INK.branch },
+              ...(w.ahead ? [{ text: ` ↑${w.ahead}`, color: INK.sync }] : []),
+              ...(w.behind ? [{ text: ` ↓${w.behind}`, color: INK.sync }] : []),
+              ...(w.dirty ? [{ text: ` ±${w.dirty}`, color: INK.dirty }] : []),
             ] satisfies Run[])
           : []),
-      ]
-    : [{ text: '…', color: INK.dim }]
-  const info = lines([where, [{ text: `“${said}”`, color: INK.say, italic: true }]])
+      ],
+      quote,
+    ]
+  }
 
   // Header, right: the turn's time and the cache.
   const status: Run[] = []
@@ -348,6 +390,16 @@ function drawDesktop($: EngineInterface, ui: Elements['desktop'], m: Model, colu
     }
   }
   const statusPic = status.length ? lines([status]) : null
+
+  // The status and the compact button sit right of the names while both fit at their full size;
+  // past that the names are shortened, and only then does the status drop to a line of its own.
+  // Nothing is ever scaled: every picture keeps its size, whatever the width.
+  const rightPx = (statusPic ? statusPic.width + 16 : 0) + (m.canCompact ? COMPACT_PX + 16 : 0)
+  const leftPx = availPx - PET_WIDTH - 12
+  const natural = Math.ceil(lines(infoLines(Infinity)).width / CH)
+  const inlineCells = Math.floor((leftPx - rightPx) / CH)
+  const isStatusBelow = natural > inlineCells && inlineCells < 30
+  const info = lines(infoLines(isStatusBelow ? Math.floor(leftPx / CH) : Math.min(natural, inlineCells)))
   const statusAlt = [
     m.turn ? `${m.turn.isLive ? 'turn' : 'last turn'} ${duration(m.turn.ms)}` : '',
     m.cache?.state === 'left' ? `cache ${cacheLeft(m.cache.ms)} left` : m.cache ? `cache ${m.cache.state}` : '',
@@ -366,7 +418,6 @@ function drawDesktop($: EngineInterface, ui: Elements['desktop'], m: Model, colu
   )
   const detailCells = Math.max(0, ...details.map(d => Math.ceil(runsWidth(d) / CH)))
   const fixedPx = (LABEL_CELLS + 6 + detailCells + 3) * CH
-  const availPx = columns * CELL_PX
   const inRow = availPx - fixedPx * m.meters.length >= 60 * m.meters.length
   const barPx = Math.floor(
     inRow
@@ -420,57 +471,49 @@ function drawDesktop($: EngineInterface, ui: Elements['desktop'], m: Model, colu
 
     mixRows = [
       <Box key="mix" flexDirection="row" alignItems="center">
-        <Svg source={label.source} alt="Context mix" width={label.width} height={label.height} />
-        <Svg
-          source={bar.source}
-          alt={slices.slices.map(s => `${s.name} ${tokens(s.tokens)}`).join(', ')}
-          width={bar.width}
-          height={bar.height}
-        />
-        <Svg source={usedPic.source} alt={usedText} width={usedPic.width} height={usedPic.height} />
+        {pic('mix-label', label, 'Context mix')}
+        {pic('mix-bar', bar, slices.slices.map(s => `${s.name} ${tokens(s.tokens)}`).join(', '))}
+        {pic('mix-used', usedPic, usedText)}
       </Box>,
       <Box key="legend" flexDirection="row">
-        <Svg source={legendPic.source} alt="Context mix legend" width={legendPic.width} height={legendPic.height} />
+        {pic('legend', legendPic, 'Context mix legend')}
       </Box>,
     ]
   }
 
+  const right = (
+    <Box key="right" flexDirection="row" alignItems="center" columnGap={2} flexShrink={0}>
+      {statusPic ? pic('turn', statusPic, statusAlt) : null}
+      {m.canCompact ? (
+        <Button key="compact" label="⇣ compact" variant={m.isHot ? 'primary' : 'secondary'} onPress={() => void compact($)} />
+      ) : null}
+    </Box>
+  )
+
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={BORDER[m.mood]} paddingX={1} rowGap={1}>
-      <Box key="header" flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
-        <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1} minWidth={0}>
-          {/* Only a Button takes a click and none holds an Svg, so a blank one lies over Claudie. */}
-          <Box position="relative" flexShrink={0}>
-            <Svg source={pet.source} alt={pet.alt} width={PET_WIDTH} height={PET_HEIGHT} />
-            <Box position="absolute" top={0} left={0} right={0} bottom={0} justifyContent="center" alignItems="center">
-              <Button key="boop" label={' '.repeat(6)} plain onPress={() => void poke($)} />
+      <Box key="header" flexDirection="column">
+        <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2} flexWrap="wrap">
+          <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
+            {/* Only a Button takes a click and none holds an Svg, so a blank one lies over Claudie. */}
+            <Box position="relative" flexShrink={0}>
+              <Svg source={pet.source} alt={pet.alt} width={PET_WIDTH} height={PET_HEIGHT} />
+              <Box position="absolute" top={0} left={0} right={0} bottom={0} justifyContent="center" alignItems="center">
+                <Button key="boop" label={' '.repeat(6)} plain onPress={() => void poke($)} />
+              </Box>
             </Box>
+            {pic('info', info, `${m.where ? `${m.where.folder}${m.where.branch ? ` on ${m.where.branch}` : ''}` : ''} — ${said}`)}
           </Box>
-          <Svg
-            source={info.source}
-            alt={`${m.where ? `${m.where.folder}${m.where.branch ? ` on ${m.where.branch}` : ''}` : ''} — ${said}`}
-            width={info.width}
-            height={info.height}
-          />
+          {isStatusBelow ? null : right}
         </Box>
-        <Box flexDirection="row" alignItems="center" columnGap={2} flexShrink={0}>
-          {statusPic ? (
-            <Svg source={statusPic.source} alt={statusAlt} width={statusPic.width} height={statusPic.height} />
-          ) : null}
-          {m.canCompact ? (
-            <Button
-              key="compact"
-              label="⇣ compact"
-              variant={m.isHot ? 'primary' : 'secondary'}
-              onPress={() => void compact($)}
-            />
-          ) : null}
-        </Box>
+        {isStatusBelow ? (
+          <Box key="status" flexDirection="row" justifyContent="flex-end">
+            {right}
+          </Box>
+        ) : null}
       </Box>
       <Box key="meters" flexDirection={inRow ? 'row' : 'column'}>
-        {tiles.map(t => (
-          <Svg key={t.key} source={t.pic.source} alt={t.alt} width={t.pic.width} height={t.pic.height} />
-        ))}
+        {tiles.map(t => pic(t.key, t.pic, t.alt))}
       </Box>
       {mixRows}
     </Box>

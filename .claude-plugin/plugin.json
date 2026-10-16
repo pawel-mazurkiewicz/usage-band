@@ -1,6 +1,6 @@
 {
   "name": "usage-band",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A cute at-a-glance card above the prompt: context, 5h and weekly limits, context mix, cache, branch, and Claudie the pixel pet",
   "types": "./types/index.d.ts",
   "userConfig": {
